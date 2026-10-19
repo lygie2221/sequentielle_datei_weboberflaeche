@@ -4,6 +4,7 @@ import de.demo.cobol.model.*;
 import java.nio.ByteBuffer;
 import java.nio.charset.*;
 import java.util.List;
+import java.util.ArrayList;
 
 /** Per-view orchestration, independent of Vaadin and Spring. */
 public final class ExplorerSession {
@@ -34,6 +35,19 @@ public final class ExplorerSession {
         loadedEncoding = encoding;
         loadedFormat = format;
     }
+    public DataRecord addRecord() {
+        if (layout == null || rows.isEmpty())
+            throw new IllegalArgumentException("Zuerst Copybook und Datendatei erfolgreich laden.");
+        if (rows.size() >= RecordCodec.MAX_RECORDS
+                || (long) (rows.size() + 1) * layout.fields().size() > RecordCodec.MAX_CELLS)
+            throw new IllegalArgumentException("Demo-Limit: höchstens 10000 Records und 200000 Zellen.");
+        DataRecord row = codec.createRecord(rows.size() + 1, layout, loadedEncoding);
+        var updated = new ArrayList<>(rows);
+        updated.add(row);
+        rows = List.copyOf(updated);
+        return row;
+    }
+
     public byte[] exportData() {
         if (layout == null || rows.isEmpty()) throw new IllegalArgumentException("Keine Datensätze zum Speichern geladen.");
         return codec.encode(rows, layout, loadedEncoding, loadedFormat);

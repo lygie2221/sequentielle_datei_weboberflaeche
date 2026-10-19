@@ -37,17 +37,38 @@ class RecordCodecTest {
         assertEquals("42.50", first.value(amount.path()));
         assertThrows(IllegalArgumentException.class, () -> codec.decode(data, layout, Encoding.LATIN1, Format.FIXED));
     }
-    @Test void validatesTextAndNumericEditsWithoutSilentPadding() {
+    @Test void validatesTextAndNumericEdits() {
         var layout = parser.parse("01 R.\n05 TXT PIC X(2).\n05 N PIC 9(2)V9(2).");
         var text = layout.fields().getFirst();
         assertEquals("A ", codec.validate(text, "A ", Encoding.LATIN1));
-        for (String invalid : new String[]{"A", "ABC", "😀", "€ "})
+        for (String invalid : new String[]{"ABC", "😀", "€ "})
             assertThrows(IllegalArgumentException.class, () -> codec.validate(text, invalid, Encoding.LATIN1));
         var number = layout.fields().get(1);
         assertEquals("1.00", codec.validate(number, "1", Encoding.LATIN1));
         for (String invalid : new String[]{"-1", "+1", "100", "1.001", "1x", "", "1,2.3"})
             assertThrows(IllegalArgumentException.class, () -> codec.validate(number, invalid, Encoding.LATIN1));
     }
+    @Test void excessTrailingSpacesAreRemovedWithoutTruncatingContent() {
+        var layout = parser.parse("01 R.\n05 TXT PIC X(4).");
+        var field = layout.fields().getFirst();
+        for (var encoding : Encoding.values()) {
+            var row = codec.decode("ABCD".getBytes(encoding.charset()), layout, encoding, Format.FIXED).getFirst();
+            codec.edit(row, field, " A    ", encoding);
+            assertEquals(" A  ", row.value(field.path()));
+            assertArrayEquals(" A  ".getBytes(encoding.charset()),
+                    codec.encode(java.util.List.of(row), layout, encoding, Format.FIXED));
+            assertEquals("    ", codec.validate(field, "       ", encoding));
+            assertEquals("    ", codec.validate(field, "", encoding));
+            assertEquals("A   ", codec.validate(field, "A", encoding));
+            assertThrows(IllegalArgumentException.class, () -> codec.validate(field, null, encoding));
+            assertEquals("ABCD", codec.validate(field, "ABCD   ", encoding));
+            for (String invalid : new String[]{"ABCDE ", "ABCD X", "ABCD\t", "ABCD\u00a0"}) {
+                assertThrows(IllegalArgumentException.class, () -> codec.edit(row, field, invalid, encoding));
+                assertEquals(" A  ", row.value(field.path()));
+            }
+        }
+    }
+
     @Test void fixedAndCrlfRecordsAndIncompleteTails() {
         var layout = parser.parse("01 R.\n05 A PIC X(2).");
         assertEquals(2, codec.decode("ABCD".getBytes(), layout, Encoding.LATIN1, Format.FIXED).size());

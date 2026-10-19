@@ -30,6 +30,7 @@ public class MainView extends VerticalLayout {
     private final Grid<FieldLayout> layoutGrid = new Grid<>();
     private final Grid<DataRecord> grid = new Grid<>();
     private final Button download = new Button("Änderungen als Datei speichern", e -> downloadFile());
+    private final Button addRecord = new Button("Neue Zeile hinzufügen", e -> addRecord());
     private final Anchor downloadLink = new Anchor();
 
     public MainView() {
@@ -62,13 +63,14 @@ public class MainView extends VerticalLayout {
         layoutGrid.setHeight("220px");
         add(layoutGrid, new H2("Datensätze"), new Paragraph(
                 "Mit Bearbeiten eine Zeile öffnen. Übernehmen validiert alle Felder; Abbrechen verwirft die Eingabe. "
-                        + "Textfelder benötigen exakt die angegebene Byteanzahl einschließlich Leerzeichen. Zahlen erlauben Komma oder Punkt."));
+                        + "Kurze Texte werden bei Übernahme rechts mit Leerzeichen aufgefüllt. Überzählige Leerzeichen am Ende werden entfernt; andere Zeichen werden nicht abgeschnitten. Zahlen erlauben Komma oder Punkt."));
         grid.setHeight("480px");
         grid.setWidthFull();
+        addRecord.setEnabled(false);
         download.setEnabled(false);
         downloadLink.getStyle().set("display", "none");
         downloadLink.setDownload(true);
-        add(grid, download, downloadLink, new Paragraph(
+        add(grid, new HorizontalLayout(addRecord, download), downloadLink, new Paragraph(
                 "Vor dem Speichern die geöffnete Zeile übernehmen oder abbrechen. Der Browser lädt die bearbeitete Datei als daten-bearbeitet.dat herunter. "
                         + "Zum Ersetzen des Originals die heruntergeladene Datei entsprechend speichern. Neuladen der Seite verwirft die Daten im Speicher."));
     }
@@ -107,6 +109,7 @@ public class MainView extends VerticalLayout {
     }
 
     private void reload() {
+        addRecord.setEnabled(false);
         download.setEnabled(false);
         downloadLink.removeHref();
         grid.getEditor().cancel();
@@ -127,11 +130,27 @@ public class MainView extends VerticalLayout {
             }
             session.loadData(data.content(), encoding.getValue(), format.getValue());
             configureGrid();
+            addRecord.setEnabled(true);
             download.setEnabled(true);
             long errors = session.rows().stream().filter(r -> !r.errors().isEmpty()).count();
             status.setText(session.rows().size() + " Datensätze geladen, " + session.layout().recordLength()
                     + " Bytes/Record. " + errors + " Datensätze mit Feldfehlern (siehe Fehlerspalte).");
         } catch (IllegalArgumentException e) { status.setText("Dateien konnten nicht ausgewertet werden: " + e.getMessage()); }
+    }
+
+    private void addRecord() {
+        if (grid.getEditor().isOpen()) {
+            status.setText("Bitte die geöffnete Zeile zuerst übernehmen oder abbrechen.");
+            return;
+        }
+        try {
+            DataRecord row = session.addRecord();
+            grid.setItems(session.rows());
+            grid.scrollToEnd();
+            grid.getEditor().editItem(row);
+            status.setText("Neue Zeile " + row.number() + " angelegt: Text enthält Leerzeichen, Zahlen sind null. "
+                    + "Übernehmen speichert die Eingaben; Abbrechen lässt die neue Zeile mit ihren Anfangswerten bestehen.");
+        } catch (IllegalArgumentException e) { status.setText("Neue Zeile nicht möglich: " + e.getMessage()); }
     }
 
     private void downloadFile() {

@@ -58,6 +58,19 @@ public final class RecordCodec {
         return List.copyOf(records);
     }
 
+    /** Explicit defaults for a new record: spaces for text, numeric zero including overpunch. */
+    public DataRecord createRecord(int number, RecordLayout layout, Encoding encoding) {
+        byte[] raw = new byte[layout.recordLength()];
+        Map<String, String> values = new LinkedHashMap<>();
+        for (FieldLayout field : layout.fields()) {
+            Validated initial = validated(field,
+                    field.type() == FieldLayout.Type.TEXT ? " ".repeat(field.length()) : "0", encoding);
+            System.arraycopy(initial.bytes(), 0, raw, field.offset(), field.length());
+            values.put(field.path(), initial.value());
+        }
+        return new DataRecord(number, raw, values, Map.of());
+    }
+
     private byte[] separator(Encoding encoding, Format format) {
         return switch (format) {
             case FIXED -> new byte[0];
@@ -81,7 +94,7 @@ public final class RecordCodec {
         return (negative ? number.negate() : number).toPlainString();
     }
 
-    /** Validate the encoded width; no implicit padding or truncation of text edits. */
+    /** Normalize text with trailing spaces and validate the encoded width. */
     public String validate(FieldLayout field, String value, Encoding encoding) {
         return validated(field, value, encoding).value();
     }
@@ -90,6 +103,14 @@ public final class RecordCodec {
 
     private Validated validated(FieldLayout field, String value, Encoding encoding) {
         if (value == null) throw new IllegalArgumentException("Wert fehlt.");
+        if (field.type() == FieldLayout.Type.TEXT && value.length() > field.length()) {
+            // Supported encodings are single-byte. Keep the field prefix exactly as entered.
+            String excess = value.substring(field.length());
+            if (excess.chars().allMatch(c -> c == ' ')) value = value.substring(0, field.length());
+        }
+        if (field.type() == FieldLayout.Type.TEXT && value.length() < field.length()) {
+            value += " ".repeat(field.length() - value.length());
+        }
         String encoded = value;
         if (field.type() == FieldLayout.Type.NUMERIC) {
             if (!value.matches((field.signed() ? "[+-]?" : "") + "[0-9]+(?:[.,][0-9]+)?"))
@@ -110,7 +131,7 @@ public final class RecordCodec {
             ByteBuffer bytes = encoding.charset().newEncoder().onMalformedInput(CodingErrorAction.REPORT)
                     .onUnmappableCharacter(CodingErrorAction.REPORT).encode(CharBuffer.wrap(encoded));
             if (bytes.remaining() != field.length()) throw new IllegalArgumentException(
-                    "Genau " + field.length() + " Bytes erforderlich; aktuell " + bytes.remaining() + ". Leerzeichen bei Text ausdrücklich eingeben.");
+                    "Genau " + field.length() + " Bytes erforderlich; aktuell " + bytes.remaining() + ". Textinhalt ist zu lang.");
             byte[] result = new byte[bytes.remaining()];
             bytes.get(result);
             return new Validated(value, result);
