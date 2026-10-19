@@ -1,0 +1,16 @@
+/target/
+/node_modules/
+/.vaadin/
+/src/main/frontend/generated/
+/package.json
+/package-lock.json
+/pnpm-lock.yaml
+/pnpmfile.js
+/tsconfig.json
+/types.d.ts
+/vite.config.ts
+/vite.generated.ts
+/vaadin-dev-server-settings.json
+/.idea/
+*.iml
+/.vaadin-node-tasks.lock
